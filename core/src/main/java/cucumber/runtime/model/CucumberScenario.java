@@ -5,6 +5,8 @@ import cucumber.runtime.Runtime;
 import cucumber.runtime.World;
 import gherkin.formatter.Formatter;
 import gherkin.formatter.Reporter;
+import gherkin.formatter.model.Match;
+import gherkin.formatter.model.Result;
 import gherkin.formatter.model.Row;
 import gherkin.formatter.model.Scenario;
 import gherkin.formatter.model.Step;
@@ -25,7 +27,7 @@ public class CucumberScenario extends CucumberTagStatement {
         this.cucumberBackground = cucumberBackground;
     }
 
-    public void buildWorldAndRunBeforeHooks(List<String> gluePaths, Runtime runtime) throws Throwable {
+    public void buildWorldAndRunBeforeHooks(List<String> gluePaths, Runtime runtime) {
         world = new World(runtime, tags());
         world.buildBackendWorldsAndRunBeforeHooks(gluePaths);
     }
@@ -37,16 +39,30 @@ public class CucumberScenario extends CucumberTagStatement {
         // TODO: split up prepareAndFormat so we can run Background in isolation.
         // Or maybe just try to make Background behave like a regular Scenario?? Printing wise at least.
 
+        List<Step> steps = getSteps();
+
         try {
             buildWorldAndRunBeforeHooks(gluePaths, runtime);
         } catch (Throwable e) {
-            // What do we do now???
+            //TODO some of this is specific to grails-cucumber.  After some refactoring, we can probably clean some of this up.
+
+            formatter.scenario((Scenario) tagStatement);
+
+            // Need to use dummy matches and steps, otherwise PrettyFormatter.result() will fail when PrettyFormatterWrapper calls it.
+            reporter.match(Match.UNDEFINED);
+            formatter.step(steps.get(0));
+
+            Result exceptionResult = new Result(Result.FAILED, 0L, e, new Object());
+            reporter.result(exceptionResult);
+            return;
         }
 
+        //TODO check for Throwable returned by runBackground()?
         runBackground(formatter, reporter);
 
+        //TODO StepContainer.format() calls formatter.step().  Shouldn't this be done at the same time the step is run??
         format(formatter);
-        for (Step step : getSteps()) {
+        for (Step step : steps) {
             runStep(step, reporter);
         }
         runAfterHooksAndDisposeWorld();
